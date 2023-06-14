@@ -1,8 +1,16 @@
 // Create a new cat
-
 import express from "express";
-
 import { Cat, CatTranslation } from "../model/Cat";
+import {
+  containerClient,
+  createContainerIfNotExists,
+} from "../config/azure-config";
+import sharp from "sharp";
+
+import multer from "multer";
+// configure Multer to use Azure Blob Storage as the storage engine
+const storage = multer.memoryStorage();
+const upload = multer({storage: storage});
 const router = express.Router();
 // Middleware to handle language preferences
 // Middleware to handle language preferences
@@ -27,35 +35,73 @@ router.use((req, res, next) => {
 
 
 
-router.post("/api/cats", async (req, res) => {
+router.post("/api/cats", upload.single("image"), async (req, res) => {
   try {
-      const { name, breed, image, min_weight, max_weight,
-        description
-      } = req.body;
-      const cat = new Cat({
-          name, breed,
-          image, min_weight, max_weight,
-            description
-      });
+    const {
+      name,
+      breed,
+      image,
+      min_weight,
+      max_weight,
+      description,
+      translations,
+    } = req.body;
+
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({error: "No file uploaded"});
+    }
+
+    // compress the image using Sharp
+    const compressedImage = await sharp(file.buffer)
+      .resize(500, 500)
+      .jpeg({quality: 80})
+      .toBuffer();
+
+    // generate a unique filename for the file
+    const filename = `${file.originalname}-${Date.now()}`;
+
+    // create a new block blob with the generated filename
+    const blockBlobClient = containerClient.getBlockBlobClient(filename);
+
+    // upload the compressed image to Azure Blob Storage
+    await blockBlobClient.upload(compressedImage, compressedImage.length);
+
+    console.log(`Image uploaded to: ${blockBlobClient.url}`);
+
+    const cat = new Cat({
+      name,
+      breed,
+      image: blockBlobClient.url,
+      image_url: blockBlobClient.url,
+      min_weight,
+      max_weight,
+      description,
+    });
     await cat.save();
 
     // Save the translations for the created cat
-    const translations = req.body.translations || [];
-      translations.forEach(async (translation: {
-          language: unknown; name: unknown; breed: any;
-            description: any;
-      }) => {
-        const {language, name, breed, description} = translation;
-      const catTranslation = new CatTranslation({
-        catId: cat._id,
-        language,
-        name,
-          breed,
-          description,
-            
-      });
-      await catTranslation.save();
-    });
+    if (Array.isArray(translations)) {
+      translations.forEach(
+        async (translation: {
+          language: unknown;
+          name: unknown;
+          breed: any;
+          description: any;
+        }) => {
+          const {language, name, breed, description} = translation;
+          const catTranslation = new CatTranslation({
+            catId: cat._id,
+            language,
+            name,
+            breed,
+            description,
+          });
+          await catTranslation.save();
+        }
+      );
+    }
 
     res.status(201).json(cat);
   } catch (err) {
@@ -63,6 +109,7 @@ router.post("/api/cats", async (req, res) => {
     res.status(500).json({error: "An error occurred"});
   }
 });
+
 
 // Get all cats
 router.get("/api/cats", async (req, res) => {

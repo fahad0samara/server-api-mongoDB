@@ -22,7 +22,7 @@ const catSchema = new mongoose.Schema({
     required: true,
   },
   description: {
-    type: String,
+      type: String,
     required: true,
   },
 });
