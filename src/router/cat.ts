@@ -3,7 +3,7 @@ import express from "express";
 import { Cat, CatTranslation } from "../model/Cat";
 import {
   containerClient,
-  createContainerIfNotExists,
+
 } from "../config/azure-config";
 import sharp from "sharp";
 
@@ -16,134 +16,107 @@ const router = express.Router();
 // Middleware to handle language preferences
 router.use((req, res, next) => {
   // Check for language preference in request headers
-  const language = req.headers['accept-language'];
+  const language = req.headers["accept-language"];
 
   // Set the language for the current request
-    if (language && (language.includes('ar') || language.includes('arabic'))) {
-        req.headers['accept-language'] = 'ar';
-    } else {
-        req.headers['accept-language'] = 'en';
-    }
-    
-   
- 
+  if (language && (language.includes("ar") || language.includes("arabic"))) {
+    req.headers["accept-language"] = "ar";
+  } else {
+    req.headers["accept-language"] = "en";
+  }
 
   next();
 });
 
+
 // Create a new cat
 
 
-
-router.post("/api/cats", upload.single("image"), async (req, res) => {
+router.post("/api/cats", async (req, res) => {
   try {
-    const {
-      name,
-      breed,
-      image,
-      min_weight,
-      max_weight,
-      description,
-      translations,
-    } = req.body;
+    const {name, breed, image, minWeight, maxWeight, description} = req.body;
 
-    const file = req.file;
-
-    if (!file) {
-      return res.status(400).json({error: "No file uploaded"});
-    }
-
-    // compress the image using Sharp
-    const compressedImage = await sharp(file.buffer)
-      .resize(500, 500)
-      .jpeg({quality: 80})
-      .toBuffer();
-
-    // generate a unique filename for the file
-    const filename = `${file.originalname}-${Date.now()}`;
-
-    // create a new block blob with the generated filename
-    const blockBlobClient = containerClient.getBlockBlobClient(filename);
-
-    // upload the compressed image to Azure Blob Storage
-    await blockBlobClient.upload(compressedImage, compressedImage.length);
-
-    console.log(`Image uploaded to: ${blockBlobClient.url}`);
-
+    // Create a new cat record
     const cat = new Cat({
       name,
       breed,
-      image: blockBlobClient.url,
-      image_url: blockBlobClient.url,
-      min_weight,
-      max_weight,
+      image,
+      min_weight: minWeight,
+      max_weight: maxWeight,
       description,
     });
+
+    // Save the cat record to the database
     await cat.save();
 
-    // Save the translations for the created cat
-    if (Array.isArray(translations)) {
-      translations.forEach(
-        async (translation: {
-          language: unknown;
-          name: unknown;
-          breed: any;
-          description: any;
-        }) => {
-          const {language, name, breed, description} = translation;
-          const catTranslation = new CatTranslation({
-            catId: cat._id,
-            language,
-            name,
-            breed,
-            description,
-          });
-          await catTranslation.save();
-        }
-      );
+    // Check if the Arabic translation is provided
+    if (req.body.nameAr) {
+      const catTranslationAr = new CatTranslation({
+        cat: cat._id, // Assign the cat's ID to the catId field
+        language: "ar",
+        name: req.body.nameAr,
+        breed: req.body.breedAr,
+        description: req.body.descriptionAr,
+      });
+
+      // Save the Arabic translation to the database
+      await catTranslationAr.save();
     }
 
-    res.status(201).json(cat);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({error: "An error occurred"});
+    res
+      .status(201)
+      .json({message: "Cat created successfully", cat: cat.toObject()});
+  } catch (error) {
+    console.error("Error creating cat:", error);
+    res.status(500).json({error: "An error occurred while creating the cat"});
   }
 });
+
+
+
 
 
 // Get all cats
 router.get("/api/cats", async (req, res) => {
   try {
-    const cats = await Cat.find();
-    const language = req.headers["accept-language"];
+    // Check if the user wants the Arabic translation
+    const language = req.query.lang; // lang query parameter: ?lang=ar
 
-    const response = [];
+    if (language === "ar") {
+      // If the requested language is Arabic, retrieve all cats with translations
+      const cats = await Cat.find();
 
-    for (const cat of cats) {
-      const translation = await CatTranslation.findOne({
-        catId: cat._id,
-        language,
+      // Fetch translations for all cats
+      const catTranslations = await CatTranslation.find({
+        cat: {$in: cats.map(cat => cat._id)},
+        language: "ar",
       });
 
-      response.push({
-        name: translation ? translation.name : cat.name,
+      // Merge translations with cats data
+      const catsData = cats.map(cat => {
+        const translation = catTranslations.find(
+          translation => translation.cat.toString() === cat._id.toString()
+        );
+        return {
+          ...cat.toObject(),
+          name: translation ? translation.name : cat.name,
           breed: translation ? translation.breed : cat.breed,
-          max_weight:
-              cat.max_weight,
-          min_weight:
-                cat.min_weight,
-        image: cat.image,
           description: translation ? translation.description : cat.description,
-        
+        };
       });
+
+      return res.status(200).json(catsData);
     }
 
-    res.json(response);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({error: "An error occurred"});
+    // If no translation is requested, return all cats without translations
+    const cats = await Cat.find();
+    return res.status(200).json(cats);
+  } catch (error) {
+    console.error("Error fetching cats:", error);
+    res.status(500).json({error: "An error occurred while fetching cats"});
   }
 });
+
 
 
 // Get a specific cat by ID

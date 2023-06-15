@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@azure/storage-blob": "^12.14.0",
+    "type": "module",
     "cors": "^2.8.5",
     "dotenv": "^16.1.4",
     "express": "^4.18.2",
@@ -13,14 +14,10 @@
   "scripts": {
     "clean": "rimraf ./build",
     "build": "npm-run-all lint format clean && tsc",
-    "start": "nodemon ./src/Server/app.ts",
+    "start": "node index.ts",
     "dev": "nodemon index.ts",
-    "local": "ts-node src",
-    "local:watch": "nodemon src -e ts,json --exec 'npm run local'",
-    "lint": "eslint src",
-    "format": "npx prettier --write",
-    "format:check": "npx prettier --check src",
-    "test": "jest"
+    "local": "ts-node src"
+
   },
   "devDependencies": {
     "@types/cors": "^2.8.13",
