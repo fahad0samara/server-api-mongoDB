@@ -1,6 +1,8 @@
 // Create a new cat
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
 import express from "express";
-import { Cat, CatTranslation } from "../model/Cat";
+
 import {
   containerClient,
 
@@ -8,6 +10,7 @@ import {
 import sharp from "sharp";
 
 import multer from "multer";
+import Cat from "../model/Cat";
 // configure Multer to use Azure Blob Storage as the storage engine
 const storage = multer.memoryStorage();
 const upload = multer({storage: storage});
@@ -29,140 +32,79 @@ router.use((req, res, next) => {
 });
 
 
-// Create a new cat
 
-
-router.post("/api/cats", async (req, res) => {
+router.post("/api/cats", upload.single("image"), async (req, res) => {
   try {
-    const {name, breed, image, minWeight, maxWeight, description} = req.body;
+    if (!req.file) {
+      return res.status(400).json({error: "No file uploaded"});
+    }
 
-    // Create a new cat record
+    const file = req.file;
+
+    // compress the image using Sharp
+    const compressedImage = await sharp(file.buffer)
+      .resize(500, 500)
+      .webp({
+        quality: 80,
+        lossless: true,
+        nearLossless: false,
+      })
+      .toBuffer();
+
+    // generate a unique filename for the file
+    const filename = `${file.originalname}-${Date.now()}`;
+
+    // create a new block blob with the generated filename
+    const blockBlobClient = containerClient.getBlockBlobClient(filename);
+
+    // upload the compressed image to Azure Blob Storage
+    await blockBlobClient.upload(compressedImage, compressedImage.length);
+
+    console.log(`Image uploaded to: ${blockBlobClient.url}`);
+
+    const {min_weight, max_weight, translations} = req.body;
+
+    // Parse the translations field as an array of objects
+    const parsedTranslations = JSON.parse(translations);
+
+    // Create a new cat object
     const cat = new Cat({
-      name,
-      breed,
-      image,
-      min_weight: minWeight,
-      max_weight: maxWeight,
-      description,
+      image: blockBlobClient.url,
+      min_weight,
+      max_weight,
+      translations: parsedTranslations,
     });
 
-    // Save the cat record to the database
+    // Save the cat to the database
     await cat.save();
 
-    // Check if the Arabic translation is provided
-    if (req.body.nameAr) {
-      const catTranslationAr = new CatTranslation({
-        cat: cat._id, // Assign the cat's ID to the catId field
-        language: "ar",
-        name: req.body.nameAr,
-        breed: req.body.breedAr,
-        description: req.body.descriptionAr,
-      });
-
-      // Save the Arabic translation to the database
-      await catTranslationAr.save();
-    }
-
-    res
-      .status(201)
-      .json({message: "Cat created successfully", cat: cat.toObject()});
+    res.status(201).json({message: "Cat created successfully", cat});
   } catch (error) {
-    console.error("Error creating cat:", error);
-    res.status(500).json({error: "An error occurred while creating the cat"});
+    res.status(500).json({message: "Failed to create cat", error});
   }
 });
 
 
-
-
-
-// Get all cats
+// Server-side code
 router.get("/api/cats", async (req, res) => {
   try {
-    // Check if the user wants the Arabic translation
-    const language = req.query.lang; // lang query parameter: ?lang=ar
+    const page = parseInt(req.query.page as string) || 1;
+    const perPage = parseInt(req.query.perPage as string) || 10;
 
-    if (language === "ar") {
-      // If the requested language is Arabic, retrieve all cats with translations
-      const cats = await Cat.find();
+    const totalCats = await Cat.countDocuments({});
+    const totalPages = Math.ceil(totalCats / perPage);
 
-      // Fetch translations for all cats
-      const catTranslations = await CatTranslation.find({
-        cat: {$in: cats.map(cat => cat._id)},
-        language: "ar",
-      });
+    const cats = await Cat.find({})
+      .skip((page - 1) * perPage)
+      .limit(perPage);
 
-      // Merge translations with cats data
-      const catsData = cats.map(cat => {
-        const translation = catTranslations.find(
-          translation => translation.cat.toString() === cat._id.toString()
-        );
-        return {
-          ...cat.toObject(),
-          name: translation ? translation.name : cat.name,
-          breed: translation ? translation.breed : cat.breed,
-          description: translation ? translation.description : cat.description,
-        };
-      });
-
-      return res.status(200).json(catsData);
-    }
-
-    // If no translation is requested, return all cats without translations
-    const cats = await Cat.find();
-    return res.status(200).json(cats);
+    res.status(200).json({ message: "Cats retrieved successfully", cats, totalPages });
   } catch (error) {
-    console.error("Error fetching cats:", error);
-    res.status(500).json({error: "An error occurred while fetching cats"});
+    res.status(500).json({ message: "Failed to retrieve cats", error });
   }
 });
 
 
-
-// Get a specific cat by ID
-router.get("/api/cats/:id", async (req, res) => {
-  try {
-    const cat = await Cat.findById(req.params.id);
-    if (!cat) {
-      return res.status(404).json({error: "Cat not found"});
-    }
-
-    const language = req.headers["accept-language"];
-
-    const translation = await CatTranslation.findOne({
-      catId: cat._id,
-      language,
-    });
-
-    const response = {
-      name: translation ? translation.name : cat.name,
-      breed: translation ? translation.breed : cat.breed,
-    };
-
-    res.json(response);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({error: "An error occurred"});
-  }
-});
-
-// Delete a cat by ID
-router.delete("/api/cats/:id", async (req, res) => {
-  try {
-    const cat = await Cat.findByIdAndDelete(req.params.id);
-    if (!cat) {
-      return res.status(404).json({error: "Cat not found"});
-    }
-
-    // Delete the translations for the deleted cat
-    await CatTranslation.deleteMany({catId: cat._id});
-
-    res.json({message: "Cat deleted successfully"});
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({error: "An error occurred"});
-  }
-});
 
 
 export default router
