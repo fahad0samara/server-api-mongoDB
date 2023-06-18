@@ -52,7 +52,12 @@ router.post("/api/cats", upload.single("image"), async (req, res) => {
       .toBuffer();
 
     // generate a unique filename for the file
-    const filename = `${file.originalname}-${Date.now()}`;
+    const filename = `${
+      new Date().getTime().toString() + Math.floor(Math.random() * 1000)
+      }.webp`;
+    
+
+
 
     // create a new block blob with the generated filename
     const blockBlobClient = containerClient.getBlockBlobClient(filename);
@@ -60,7 +65,7 @@ router.post("/api/cats", upload.single("image"), async (req, res) => {
     // upload the compressed image to Azure Blob Storage
     await blockBlobClient.upload(compressedImage, compressedImage.length);
 
-    console.log(`Image uploaded to: ${blockBlobClient.url}`);
+
 
     const {min_weight, max_weight, translations} = req.body;
 

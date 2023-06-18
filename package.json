@@ -15,6 +15,7 @@
     "clean": "rimraf ./build",
     "build": "npm-run-all lint format clean && tsc",
     "start": "node index.ts",
+    
     "dev": "nodemon index.ts",
     "local": "ts-node src"
 
