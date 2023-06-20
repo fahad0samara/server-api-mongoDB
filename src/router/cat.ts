@@ -111,6 +111,121 @@ router.get("/api/cats", async (req, res) => {
 
 
 
+router.get("/api/cats/:id", async (req, res) => {
+  try {
+    const catId = req.params.id;
+    
+    let cat = null;
+    if (catId) {
+      cat = await Cat.findById(catId);
+    }
+    if (!cat) {
+      return res.status(404).json({ message: "Cat not found" });
+    }
+    res.status(200).json({ message: "Cat retrieved successfully", cat });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to retrieve cat", error });
+  }
+});
+
+
+
+router.delete("/api/cats/:id", async (req, res) => {
+
+  try {
+
+    const catId = req.params.id;
+    const deletedCat = await Cat.findByIdAndDelete(catId);
+
+    if (!deletedCat) {
+      return res.status(404).json({message: "Cat not found"});
+    }
+
+    res.status(200).json({message: "Cat deleted successfully"});
+  } catch (error) {
+    console.error("Failed to delete cat:", error);
+    res
+      .status(500)
+      .json({
+        message: "Failed to delete cat",
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        //@ts-ignore
+        error: error.message
+      });
+  }
+
+
+});
+
+// Server-side code
+router.put("/api/cats/:id", upload.single("image"), async (req, res) => {
+  try {
+    const catId = req.params.id;
+
+    const {min_weight, max_weight, translations} = req.body;
+
+    // Parse the translations field as an array of objects
+    const parsedTranslations = JSON.parse(translations);
+
+    let updatedCatData = {
+      min_weight,
+      max_weight,
+      translations: parsedTranslations,
+    };
+
+    if (req.file) {
+      const file = req.file;
+
+      // compress the image using Sharp
+      const compressedImage = await sharp(file.buffer)
+        .resize(500, 500)
+        .webp({
+          quality: 80,
+          lossless: true,
+          nearLossless: false,
+        })
+        .toBuffer();
+
+      // generate a unique filename for the file
+      const filename = `${
+        new Date().getTime().toString() + Math.floor(Math.random() * 1000)
+      }.webp`;
+
+      // create a new block blob with the generated filename
+      const blockBlobClient = containerClient.getBlockBlobClient(filename);
+
+      // upload the compressed image to Azure Blob Storage
+      await blockBlobClient.upload(compressedImage, compressedImage.length);
+
+      updatedCatData = {
+        ...updatedCatData,
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        //@ts-ignore
+        image: blockBlobClient.url,
+      };
+    }
+
+    const updatedCat = await Cat.findByIdAndUpdate(catId, updatedCatData, {
+      new: true,
+    });
+
+    if (!updatedCat) {
+      return res.status(404).json({message: "Cat not found"});
+    }
+
+    res
+      .status(200)
+      .json({message: "Cat updated successfully", cat: updatedCat});
+  } catch (error) {
+    res.status(500).json({message: "Failed to update cat", error});
+  }
+});
+
+
+
+
+
+
 
 export default router
 

@@ -12,12 +12,14 @@
     "sharp": "^0.32.1"
   },
   "scripts": {
-    "clean": "rimraf ./build",
-    "build": "npm-run-all lint format clean && tsc",
-    "start": "node index.ts",
+   
+
+  "start": "ts-node index.ts",
+  "dev": "nodemon index.ts",
+  "build":
+    "rimraf dist && tsc"
+
     
-    "dev": "nodemon index.ts",
-    "local": "ts-node src"
 
   },
   "devDependencies": {
