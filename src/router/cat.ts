@@ -201,7 +201,7 @@ router.put("/api/cats/:id", upload.single("image"), async (req, res) => {
         ...updatedCatData,
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         //@ts-ignore
-        image: blockBlobClient.url,
+        image: `${blockBlobClient.url}?${Date.now()}`,
       };
     }
 
