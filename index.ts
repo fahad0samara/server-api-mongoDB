@@ -22,12 +22,9 @@ db.once('open', () => {
     console.info('Database connected');
 });
 
-// Set cache control headers for static assets
-app.use((req, res, next) => {
-  // Set cache lifetime for one year (in seconds)
-  res.set("Cache-Control", "public, max-age=31536000");
-  next();
-});
+
+
+
 
 app.get('/', (req, res, ) => {
     res.send('<h1>Hello world<h1>');

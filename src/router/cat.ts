@@ -1,8 +1,5 @@
-// Create a new cat
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 
 import express from "express";
-
 import {
   containerClient,
 
@@ -11,6 +8,16 @@ import sharp from "sharp";
 
 import multer from "multer";
 import Cat from "../model/Cat";
+
+import {Request, Response, NextFunction} from "express";
+
+const preventCaching = (req: Request, res: Response, next: NextFunction) => {
+  // Set cache control headers to prevent caching
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  next();
+};
+
+
 // configure Multer to use Azure Blob Storage as the storage engine
 const storage = multer.memoryStorage();
 const upload = multer({storage: storage});
@@ -130,7 +137,7 @@ router.get("/api/cats/:id", async (req, res) => {
 
 
 
-router.delete("/api/cats/:id", async (req, res) => {
+router.delete("/api/cats/:id",preventCaching, async (req, res) => {
 
   try {
 
@@ -158,7 +165,7 @@ router.delete("/api/cats/:id", async (req, res) => {
 });
 
 // Server-side code
-router.put("/api/cats/:id", upload.single("image"), async (req, res) => {
+router.put("/api/cats/:id",preventCaching, upload.single("image"), async (req, res) => {
   try {
     const catId = req.params.id;
 
